@@ -1,0 +1,20 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "agent-api",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "agent.api:app", "--host", "0.0.0.0", "--port", "8010"],
+      "port": 8010
+    },
+    {
+      "name": "streamlit",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "streamlit", "run", "streamlit_app/app.py", "--server.port", "8511", "--server.headless", "true"],
+      "port": 8511,
+      "env": {
+        "AGENT_API_URL": "http://localhost:8010"
+      }
+    }
+  ]
+}

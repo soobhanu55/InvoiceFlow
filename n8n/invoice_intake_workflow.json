@@ -1,0 +1,225 @@
+{
+  "name": "Invoice Intake Orchestration",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "invoice-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "1a1b1c1d-0001-4000-8000-000000000001",
+      "name": "Invoice Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-40, 260],
+      "webhookId": "invoice-intake"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.AGENT_API_URL || 'http://agent-api:8000'}}/invoices/submit",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": []
+        },
+        "sendBinaryData": true,
+        "binaryPropertyName": "file",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "1a1b1c1d-0002-4000-8000-000000000002",
+      "name": "Submit to Agent API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [200, 260]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{$json.status}}",
+              "rightValue": "auto_approved",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1a1b1c1d-0003-4000-8000-000000000003",
+      "name": "Auto-approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 260]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "invoice_id",
+              "type": "string",
+              "value": "={{$json.invoice_id}}"
+            },
+            {
+              "id": "a2",
+              "name": "status",
+              "type": "string",
+              "value": "={{$json.status}}"
+            },
+            {
+              "id": "a3",
+              "name": "vendor_name",
+              "type": "string",
+              "value": "={{$json.extracted.vendor_name}}"
+            },
+            {
+              "id": "a4",
+              "name": "total",
+              "type": "number",
+              "value": "={{$json.extracted.total}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1a1b1c1d-0004-4000-8000-000000000004",
+      "name": "Format Approved Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [700, 140]
+    },
+    {
+      "parameters": {},
+      "id": "1a1b1c1d-0005-4000-8000-000000000005",
+      "name": "Send to Accounting System (stub)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [940, 140],
+      "notes": "Replace with a real HTTP Request / DB write to the downstream accounting or ERP payment system."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.REVIEWER_NOTIFY_WEBHOOK_URL || 'https://hooks.slack.com/services/REPLACE/ME'}}",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{ { \"text\": \":warning: Invoice \" + $json.invoice_id + \" needs human review (confidence \" + ($json.review?.overall_confidence ?? \"n/a\") + \"). Open the review queue: \" + ($env.STREAMLIT_URL || 'http://localhost:8501') } }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "1a1b1c1d-0006-4000-8000-000000000006",
+      "name": "Notify Review Queue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 380],
+      "notes": "Points at a Slack incoming webhook by default; swap the URL for email/Teams/PagerDuty as needed."
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "1a1b1c1d-0007-4000-8000-000000000007",
+      "name": "Respond to Caller",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1180, 260]
+    }
+  ],
+  "connections": {
+    "Invoice Webhook": {
+      "main": [
+        [
+          {
+            "node": "Submit to Agent API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit to Agent API": {
+      "main": [
+        [
+          {
+            "node": "Auto-approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-approved?": {
+      "main": [
+        [
+          {
+            "node": "Format Approved Output",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Review Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Approved Output": {
+      "main": [
+        [
+          {
+            "node": "Send to Accounting System (stub)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Accounting System (stub)": {
+      "main": [
+        [
+          {
+            "node": "Respond to Caller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Review Queue": {
+      "main": [
+        [
+          {
+            "node": "Respond to Caller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

@@ -1,0 +1,62 @@
+services:
+  mcp-server:
+    build:
+      context: .
+      dockerfile: mcp_server/Dockerfile
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - CATALOG_DB_PATH=data/catalog.db
+
+  agent-api:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mcp-server
+    volumes:
+      - ./data:/app/data
+    environment:
+      - MCP_TRANSPORT=sse
+      - MCP_SERVER_URL=http://mcp-server:8765/sse
+      - STORE_DB_PATH=data/store.db
+      - CHECKPOINT_DB_PATH=data/checkpoints.sqlite
+      - INBOX_DIR=data/inbox
+      - AUTO_APPROVE_CONFIDENCE=0.85
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-5}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+
+  streamlit:
+    build:
+      context: .
+      dockerfile: streamlit_app/Dockerfile
+    ports:
+      - "8501:8501"
+    depends_on:
+      - agent-api
+    environment:
+      - AGENT_API_URL=http://agent-api:8000
+
+  n8n:
+    image: n8nio/n8n:latest
+    ports:
+      - "5678:5678"
+    volumes:
+      - ./n8n:/home/node/n8n-workflows
+      - n8n_data:/home/node/.n8n
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - AGENT_API_URL=http://agent-api:8000
+      - STREAMLIT_URL=http://localhost:8501
+    depends_on:
+      - agent-api
+
+volumes:
+  n8n_data:

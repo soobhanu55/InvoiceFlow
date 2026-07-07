@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+data/*.db
+data/*.sqlite
+data/*.sqlite-journal
+data/inbox/
+.streamlit/
+*.egg-info/
+.claude/settings.local.json
