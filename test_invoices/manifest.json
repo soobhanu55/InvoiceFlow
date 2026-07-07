@@ -1,0 +1,190 @@
+[
+  {
+    "name": "clean_acme_pens_paper",
+    "category": "clean",
+    "file": "invoices/clean_acme_pens_paper.pdf",
+    "expected_status": "auto_approved",
+    "expected_reason_codes": [],
+    "notes": ""
+  },
+  {
+    "name": "clean_blueridge_monitors",
+    "category": "clean",
+    "file": "invoices/clean_blueridge_monitors.pdf",
+    "expected_status": "auto_approved",
+    "expected_reason_codes": [],
+    "notes": ""
+  },
+  {
+    "name": "clean_summit_freight",
+    "category": "clean",
+    "file": "invoices/clean_summit_freight.pdf",
+    "expected_status": "auto_approved",
+    "expected_reason_codes": [],
+    "notes": ""
+  },
+  {
+    "name": "clean_northwind_cardstock",
+    "category": "clean",
+    "file": "invoices/clean_northwind_cardstock.pdf",
+    "expected_status": "auto_approved",
+    "expected_reason_codes": [],
+    "notes": ""
+  },
+  {
+    "name": "clean_acme_chairs",
+    "category": "clean",
+    "file": "invoices/clean_acme_chairs.pdf",
+    "expected_status": "auto_approved",
+    "expected_reason_codes": [],
+    "notes": ""
+  },
+  {
+    "name": "malformed_line_sum_mismatch",
+    "category": "malformed",
+    "file": "invoices/malformed_line_sum_mismatch.pdf",
+    "expected_status": "needs_review",
+    "expected_reason_codes": [
+      "LINE_ITEMS_SUM_MISMATCH"
+    ],
+    "notes": "Stated subtotal doesn't match the sum of line totals"
+  },
+  {
+    "name": "malformed_tax_miscalculated",
+    "category": "malformed",
+    "file": "invoices/malformed_tax_miscalculated.pdf",
+    "expected_status": "needs_review",
+    "expected_reason_codes": [
+      "TAX_MISCALCULATED"
+    ],
+    "notes": "Tax amount doesn't match subtotal * stated tax rate"
+  },
+  {
+    "name": "malformed_total_mismatch",
+    "category": "malformed",
+    "file": "invoices/malformed_total_mismatch.pdf",
+    "expected_status": "needs_review",
+    "expected_reason_codes": [
+      "TOTAL_MISMATCH"
+    ],
+    "notes": "subtotal + tax does not equal the stated total"
+  },
+  {
+    "name": "malformed_po_not_found",
+    "category": "malformed",
+    "file": "invoices/malformed_po_not_found.pdf",
+    "expected_status": "needs_review",
+    "expected_reason_codes": [
+      "PO_NOT_FOUND"
+    ],
+    "notes": "References a PO number that does not exist in the ERP"
+  },
+  {
+    "name": "malformed_po_closed",
+    "category": "malformed",
+    "file": "invoices/malformed_po_closed.pdf",
+    "expected_status": "needs_review",
+    "expected_reason_codes": [
+      "PO_CLOSED"
+    ],
+    "notes": "PO exists and line items match exactly, but the PO is closed"
+  },
+  {
+    "name": "malformed_sku_not_in_catalog",
+    "category": "malformed",
+    "file": "invoices/malformed_sku_not_in_catalog.pdf",
+    "expected_status": "needs_review",
+    "expected_reason_codes": [],
+    "notes": "Second line item's SKU does not exist anywhere in the catalog (match status: not_in_catalog)"
+  },
+  {
+    "name": "malformed_sku_not_on_po",
+    "category": "malformed",
+    "file": "invoices/malformed_sku_not_on_po.pdf",
+    "expected_status": "needs_review",
+    "expected_reason_codes": [],
+    "notes": "Laptop SKU is a real catalog item but was never on PO-1001 (match status: not_in_po)"
+  },
+  {
+    "name": "malformed_qty_mismatch",
+    "category": "malformed",
+    "file": "invoices/malformed_qty_mismatch.pdf",
+    "expected_status": "needs_review",
+    "expected_reason_codes": [],
+    "notes": "Invoiced quantity (500) doesn't match the PO quantity (100) for SKU-PEN-001"
+  },
+  {
+    "name": "malformed_price_mismatch",
+    "category": "malformed",
+    "file": "invoices/malformed_price_mismatch.pdf",
+    "expected_status": "needs_review",
+    "expected_reason_codes": [],
+    "notes": "Invoiced unit price ($260) doesn't match the PO price ($210) for SKU-MON-27"
+  },
+  {
+    "name": "malformed_vendor_mismatch",
+    "category": "malformed",
+    "file": "invoices/malformed_vendor_mismatch.pdf",
+    "expected_status": "needs_review",
+    "expected_reason_codes": [],
+    "notes": "Invoice vendor doesn't match the vendor on file for the referenced PO (vendor_verified=False)"
+  },
+  {
+    "name": "malformed_missing_po_number",
+    "category": "malformed",
+    "file": "invoices/malformed_missing_po_number.pdf",
+    "expected_status": "needs_review",
+    "expected_reason_codes": [
+      "MISSING_PO_NUMBER"
+    ],
+    "notes": "No PO number present anywhere on the document"
+  },
+  {
+    "name": "malformed_missing_due_date",
+    "category": "malformed",
+    "file": "invoices/malformed_missing_due_date.pdf",
+    "expected_status": "needs_review",
+    "expected_reason_codes": [
+      "MISSING_DUE_DATE"
+    ],
+    "notes": "Otherwise-clean invoice but missing a due date"
+  },
+  {
+    "name": "malformed_credit_note_misclassified",
+    "category": "malformed",
+    "file": "invoices/malformed_credit_note_misclassified.pdf",
+    "expected_status": "needs_review",
+    "expected_reason_codes": [
+      "DOC_TYPE_NOT_INVOICE"
+    ],
+    "notes": "A credit note that should be classified as such, not as a standard invoice"
+  },
+  {
+    "name": "malformed_missing_invoice_number",
+    "category": "malformed",
+    "file": "invoices/malformed_missing_invoice_number.pdf",
+    "expected_status": "needs_review",
+    "expected_reason_codes": [
+      "MISSING_INVOICE_NUMBER"
+    ],
+    "notes": "No invoice number present anywhere on the document"
+  },
+  {
+    "name": "malformed_no_line_items",
+    "category": "malformed",
+    "file": "invoices/malformed_no_line_items.pdf",
+    "expected_status": "needs_review",
+    "expected_reason_codes": [
+      "NO_LINE_ITEMS"
+    ],
+    "notes": "Line item table is missing entirely even though totals are stated"
+  },
+  {
+    "name": "malformed_unknown_vendor",
+    "category": "malformed",
+    "file": "invoices/malformed_unknown_vendor.pdf",
+    "expected_status": "needs_review",
+    "expected_reason_codes": [],
+    "notes": "Vendor is not recognized in the ERP's vendor master at all"
+  }
+]
