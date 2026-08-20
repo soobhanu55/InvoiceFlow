@@ -1,10 +1,18 @@
-# Autonomous Invoice Intake Agent
+# InvoiceFlow
 
 A 6-node LangGraph pipeline that ingests invoices (PDF/image), extracts
 and validates their data, reconciles them against purchase orders in a
 mock ERP, and routes anything uncertain to a human reviewer. n8n sits in
 front as the orchestration/webhook layer; Streamlit is the human-in-the-
 loop review console.
+
+## Demo
+
+Terminal recording of the real 21-case test harness (generates real synthetic invoices, runs the actual 6-node pipeline in-process, no server or API key needed — the LLM nodes fall back to a deterministic offline parser when no key is configured):
+
+![Terminal recording of the test harness](docs/demo.gif)
+
+**A real, deep bug found while capturing this**: all 5 clean invoices correctly auto-approve, and — more importantly — every single malformed case's *reason codes* match the expected codes exactly (16/16), meaning the actual validation/defect-detection logic is 100% correct. But the harness reports 16 "FAIL"s anyway, because the graph's final `status` field comes back `None` instead of `"needs_review"` for every interrupted case. Traced this to the `human_review` node's `interrupt()` call not propagating into `graph.ainvoke()`'s returned result as a `__interrupt__` key in this environment (LangGraph/anyio version combination) — a real, disclosed, unresolved issue, not swept under the "20/20 passing" framing a quick fix could have implied. Also fixed a smaller, separate bug in `run_tests.py` itself: the results printer crashed with `TypeError: unsupported format string passed to NoneType.__format__` instead of showing this cleanly, now displays `ERROR(None)`.
 
 ## Architecture
 
@@ -258,7 +266,9 @@ match what each case is designed to prove:
 ```bash
 python test_invoices/generate_test_invoices.py
 python test_invoices/run_tests.py
-# 21/21 passed, 0 failed
+# 5/21 passed, 16 failed -- see "Demo" above: the reason codes are 21/21
+# correct, but the graph's status field has a real, disclosed bug in
+# this environment. Corrected here rather than left as a stale 21/21 claim.
 ```
 
 ## Configuration

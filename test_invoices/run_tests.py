@@ -76,7 +76,8 @@ async def main() -> int:
     print("-" * (name_w + 12 + 15 + 15 + 6))
     for r in rows:
         mark = "PASS" if r["ok"] else "FAIL"
-        print(f"{r['name']:<{name_w}}{r['category']:<12}{r['expected_status']:<15}{r['actual_status']:<15}{mark}")
+        actual_display = str(r["actual_status"]) if r["actual_status"] is not None else "ERROR(None)"
+        print(f"{r['name']:<{name_w}}{r['category']:<12}{r['expected_status']:<15}{actual_display:<15}{mark}")
         if not r["ok"]:
             print(f"    expected_reason_codes={r['expected_codes']} actual_reason_codes={r['actual_codes']}")
 
