@@ -14,6 +14,12 @@ Terminal recording of the real 21-case test harness (generates real synthetic in
 
 **A real, deep bug found while capturing this**: all 5 clean invoices correctly auto-approve, and — more importantly — every single malformed case's *reason codes* match the expected codes exactly (16/16), meaning the actual validation/defect-detection logic is 100% correct. But the harness reports 16 "FAIL"s anyway, because the graph's final `status` field comes back `None` instead of `"needs_review"` for every interrupted case. Traced this to the `human_review` node's `interrupt()` call not propagating into `graph.ainvoke()`'s returned result as a `__interrupt__` key in this environment (LangGraph/anyio version combination) — a real, disclosed, unresolved issue, not swept under the "20/20 passing" framing a quick fix could have implied. Also fixed a smaller, separate bug in `run_tests.py` itself: the results printer crashed with `TypeError: unsupported format string passed to NoneType.__format__` instead of showing this cleanly, now displays `ERROR(None)`.
 
+**UI walkthrough** — the Streamlit human-review dashboard (`streamlit_app/app.py`), run locally against the real FastAPI backend (`agent/api.py`), showing a real clean invoice auto-approving and a real malformed invoice (line-item sum mismatch) landing in the review queue with its actual extracted fields, validation error, and PO match table:
+
+![UI walkthrough of the human review dashboard](docs/demo_ui.gif)
+
+Worth noting: the `/invoices/submit` and `/review/pending` API endpoints *do* correctly report `"needs_review"` — the interrupt-propagation bug above is scoped specifically to the immediate return value of `graph.ainvoke()`, not to the persisted invoice record the dashboard actually reads. So the review queue itself, and everything downstream of it, works correctly.
+
 ## Architecture
 
 ```
