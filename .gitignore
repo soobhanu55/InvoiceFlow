@@ -14,3 +14,5 @@ data/inbox/
 .coverage
 htmlcov/
 coverage.xml
+
+.claude/
