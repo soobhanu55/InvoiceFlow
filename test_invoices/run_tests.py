@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from langgraph.checkpoint.memory import MemorySaver
 
 from agent import store
-from agent.graph import build_graph
+from agent.graph import build_graph, pending_review
 from agent.mcp_client import get_mcp_client
 
 MANIFEST_PATH = Path(__file__).resolve().parent / "manifest.json"
@@ -36,8 +36,8 @@ async def run_case(graph, case: dict) -> tuple[str, list[str]]:
         {"invoice_id": invoice_id, "file_path": str(file_path)}, config=config
     )
 
-    if "__interrupt__" in result:
-        payload = result["__interrupt__"][0].value
+    payload = await pending_review(graph, config)
+    if payload is not None:
         actual_status = "needs_review"
         actual_codes = [i["reason_code"] for i in payload.get("validation_issues", [])]
     else:

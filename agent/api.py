@@ -25,7 +25,7 @@ from langgraph.types import Command
 from pydantic import BaseModel
 
 from agent import store
-from agent.graph import build_graph
+from agent.graph import build_graph, pending_review
 from agent.mcp_client import get_mcp_client
 
 INBOX_DIR = Path(os.environ.get("INBOX_DIR", "data/inbox"))
@@ -71,13 +71,12 @@ async def _run_graph(invoice_id: str, file_path: str) -> dict[str, Any]:
     graph = app.state.graph
     config = _thread_config(invoice_id)
     result = await graph.ainvoke({"invoice_id": invoice_id, "file_path": file_path}, config=config)
-    return _format_run_result(invoice_id, result)
+    return _format_run_result(invoice_id, result, await pending_review(graph, config))
 
 
-def _format_run_result(invoice_id: str, result: dict[str, Any]) -> dict[str, Any]:
-    if "__interrupt__" in result:
-        payload = result["__interrupt__"][0].value
-        return {"invoice_id": invoice_id, "status": "needs_review", "review": payload}
+def _format_run_result(invoice_id: str, result: dict[str, Any], review: dict | None = None) -> dict[str, Any]:
+    if review is not None:
+        return {"invoice_id": invoice_id, "status": "needs_review", "review": review}
     return {
         "invoice_id": invoice_id,
         "status": result.get("status"),
@@ -175,7 +174,7 @@ async def resume_review(invoice_id: str, body: ResumeRequest) -> dict:
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    return _format_run_result(invoice_id, result)
+    return _format_run_result(invoice_id, result, await pending_review(graph, config))
 
 
 @app.get("/output")

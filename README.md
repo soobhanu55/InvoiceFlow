@@ -18,7 +18,8 @@ MCP server runs as a genuinely separate process (stdio or SSE), not an in-proces
 ## Results
 
 - All 21 purpose-built test cases (5 clean, 16 deliberately malformed) → **21/21 correct reason codes**.
-- **Known bug, disclosed:** the harness's reported pass/fail status has a real interrupt-propagation issue in this LangGraph/anyio version combo — the *logic* is 100% correct (reason codes all match), but the harness itself misreports 16 of those as "FAIL". Traced and documented rather than hidden behind a false "21/21 passing" headline. The API endpoints and the dashboard both read the correct persisted status regardless.
+- **Harness bug found and fixed:** an earlier version of this harness reported 16 of those 21 as FAIL. Root cause: it looked for an `__interrupt__` key in the `ainvoke()` result, which only exists in newer LangGraph releases, so on older ones every paused run looked finished. The API had the same flaw (its review queue and resume flow rely on it). Both now read the checkpointed state (`agent.graph.pending_review`), and the harness reports a real **21/21** through the real MCP server over stdio.
+- **50 automated tests, 83% line coverage** (CI fails below 75%): validation and matching rules, the end-to-end graph with auto-approve / approve / edit / reject paths and independent checkpoints per invoice, every FastAPI endpoint, intake branches (text, PDF text layer, OCR fallback), the output store and the MCP catalog tools on a seeded database. The paid-LLM code path and the MCP stdio client are not unit-tested (no API key in CI; the 21-case harness exercises the client).
 
 ## Run it
 

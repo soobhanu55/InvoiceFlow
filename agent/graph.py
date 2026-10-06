@@ -39,3 +39,16 @@ def build_graph(checkpointer=None):
     graph.add_edge("human_review", END)
 
     return graph.compile(checkpointer=checkpointer)
+
+
+async def pending_review(graph, config) -> dict | None:
+    """The review payload if this run is paused at human_review, else None.
+
+    Reads the checkpointed state instead of looking for "__interrupt__" in the ainvoke() result: that key only
+    exists in newer LangGraph releases, so checking for it silently reports every paused run as finished on
+    older ones (the cause of the harness mis-reporting that earlier versions of this README disclosed)."""
+    state = await graph.aget_state(config)
+    for task in state.tasks:
+        if task.interrupts:
+            return task.interrupts[0].value
+    return None
