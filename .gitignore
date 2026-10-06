@@ -10,3 +10,7 @@ data/inbox/
 .streamlit/
 *.egg-info/
 .claude/settings.local.json
+
+.coverage
+htmlcov/
+coverage.xml
