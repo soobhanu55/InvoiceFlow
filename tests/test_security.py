@@ -169,3 +169,56 @@ def test_api_key_is_enforced_when_configured(monkeypatch):
 def test_api_is_open_when_no_key_is_configured(monkeypatch):
     monkeypatch.delenv("API_KEY", raising=False)
     assert TestClient(api.app).get("/health/dependencies").status_code == 200
+
+
+# ------------------------------------------------------------------------------ output grounding
+
+DOC = "Vendor: Acme Office Supplies\nInvoice Number: INV-9001\nPO Number: PO-1001\nSKU-PEN-001 Pens 100 0.50 50.00\nSubtotal: 1,234.50\nTotal: 1.358,00"
+
+
+def test_values_printed_in_the_document_are_grounded_in_either_number_style():
+    ex = {"vendor_name": "ACME Office Supplies", "invoice_number": "INV-9001", "po_number": "PO-1001", "subtotal": 1234.5, "total": 1358.0,
+          "line_items": [{"sku": "SKU-PEN-001", "quantity": 100, "unit_price": 0.5, "line_total": 50.0}]}
+    assert security.ungrounded_fields(DOC, ex) == []
+
+
+def test_values_the_document_does_not_contain_are_flagged():
+    ex = {"vendor_name": "Evil Corp", "po_number": "PO-9999", "total": 0.01, "subtotal": 1234.5,
+          "line_items": [{"sku": "SKU-PEN-001", "quantity": 7, "unit_price": 0.5, "line_total": 3.5}]}
+    assert set(security.ungrounded_fields(DOC, ex)) == {"vendor_name", "po_number", "total", "line_items[0].quantity", "line_items[0].line_total"}
+
+
+@pytest.mark.usefixtures("catalog_and_store")
+class TestForgery:
+    """A model talked into reporting the values the PO expects, for an invoice that actually differs from the PO."""
+
+    def forged_run(self, tmp_path, monkeypatch):
+        from test_failure_modes import Router
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+        monkeypatch.setenv("AUTO_APPROVE_CONFIDENCE", "0.85")
+        install(monkeypatch, ("m", Router(invoice_text())))          # the model answers as if the invoice were the clean one
+        return run_pipeline(tmp_path, invoice_text(price_scale=1.3))  # the document says the prices are 30% higher
+
+    def test_a_forged_extraction_is_stopped_by_the_grounding_check(self, tmp_path, monkeypatch):
+        result, review = self.forged_run(tmp_path, monkeypatch)
+        assert review is not None and result.get("status") != "auto_approved"
+        assert any(i["reason_code"] == "UNGROUNDED_FIELD" for i in review["validation_issues"])
+
+    def test_without_the_check_the_same_forgery_is_auto_approved(self, tmp_path, monkeypatch):
+        """Shows the check is what stops it: PO matching alone cannot, because the forged values match the PO."""
+        monkeypatch.setattr(security, "ungrounded_fields", lambda *a: [])
+        result, review = self.forged_run(tmp_path, monkeypatch)
+        assert review is None and result["status"] == "auto_approved"
+
+
+def test_scanner_floors_on_the_corpus_it_was_tuned_on():
+    """Regression guard only: rounds A and B were used to build the patterns, so these are not a measure of recall."""
+    sys_path = pathlib.Path(__file__).resolve().parent.parent / "test_invoices"
+    import sys
+
+    sys.path.insert(0, str(sys_path))
+    import injection_corpus as c
+
+    assert all(security.scan(a) for a in c.ATTACKS_A + c.ATTACKS_B)
+    assert sum(bool(security.scan(b)) for b in c.BENIGN_A + c.BENIGN_B + c.BENIGN_C) <= 1

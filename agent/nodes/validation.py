@@ -12,6 +12,7 @@ existence.
 """
 from __future__ import annotations
 
+from agent import security
 from agent.mcp_client import lookup_po
 from agent.resilience import CallFailed
 from agent.state import ExtractedInvoice, InvoiceState, ValidationIssue
@@ -46,6 +47,16 @@ async def validation_node(state: InvoiceState) -> dict:
                 "PROMPT_INJECTION_SUSPECTED",
                 "Document text contains instruction-like content aimed at the model "
                 f"({', '.join(state['security_findings'])}); a human must check it",
+            )
+        )
+
+    ungrounded = security.ungrounded_fields(state.get("raw_text", ""), extracted_data) if state.get("raw_text") else []
+    if ungrounded:
+        issues.append(
+            _issue(
+                "UNGROUNDED_FIELD",
+                f"Extracted values that are not in the document text: {', '.join(ungrounded[:6])}"
+                + (" ..." if len(ungrounded) > 6 else ""),
             )
         )
 
