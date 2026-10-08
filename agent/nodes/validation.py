@@ -13,6 +13,7 @@ existence.
 from __future__ import annotations
 
 from agent.mcp_client import lookup_po
+from agent.resilience import CallFailed
 from agent.state import ExtractedInvoice, InvoiceState, ValidationIssue
 
 EPSILON = 0.02
@@ -36,6 +37,17 @@ async def validation_node(state: InvoiceState) -> dict:
             "po_lookup": None,
             "audit_log": audit_log,
         }
+
+    for reason in state.get("degraded", []):
+        issues.append(_issue("DEGRADED_PIPELINE", reason, severity="warning"))
+    if state.get("security_findings"):
+        issues.append(
+            _issue(
+                "PROMPT_INJECTION_SUSPECTED",
+                "Document text contains instruction-like content aimed at the model "
+                f"({', '.join(state['security_findings'])}); a human must check it",
+            )
+        )
 
     if state.get("doc_type") not in ("invoice",):
         issues.append(
@@ -104,8 +116,14 @@ async def validation_node(state: InvoiceState) -> dict:
     if not extracted.po_number:
         issues.append(_issue("MISSING_PO_NUMBER", "No PO number could be extracted"))
     else:
-        po_lookup = await lookup_po(extracted.po_number)
-        audit_log.append(f"validation: lookup_po({extracted.po_number!r}) -> found={po_lookup.get('found')}")
+        try:
+            po_lookup = await lookup_po(extracted.po_number)
+        except CallFailed as exc:
+            audit_log.append(f"validation: lookup_po failed ({exc.kind.value})")
+            issues.append(_issue("PO_CHECK_FAILED", f"PO could not be checked ({exc.kind.value}); not verified", "error"))
+        else:
+            audit_log.append(f"validation: lookup_po({extracted.po_number!r}) -> found={po_lookup.get('found')}")
+    if po_lookup is not None:
         if not po_lookup.get("found"):
             issues.append(
                 _issue(

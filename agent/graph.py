@@ -18,17 +18,18 @@ from agent.nodes.intake import intake_node
 from agent.nodes.matching import matching_node
 from agent.nodes.validation import validation_node
 from agent.state import InvoiceState
+from agent.telemetry import traced_node
 
 
 def build_graph(checkpointer=None):
     graph = StateGraph(InvoiceState)
 
-    graph.add_node("intake", intake_node)
-    graph.add_node("classification", classification_node)
-    graph.add_node("extraction", extraction_node)
-    graph.add_node("validation", validation_node)
-    graph.add_node("matching", matching_node)
-    graph.add_node("human_review", human_review_node)
+    graph.add_node("intake", traced_node("intake")(intake_node))
+    graph.add_node("classification", traced_node("classification")(classification_node))
+    graph.add_node("extraction", traced_node("extraction")(extraction_node))
+    graph.add_node("validation", traced_node("validation")(validation_node))
+    graph.add_node("matching", traced_node("matching")(matching_node))
+    graph.add_node("human_review", traced_node("human_review")(human_review_node))
 
     graph.set_entry_point("intake")
     graph.add_edge("intake", "classification")

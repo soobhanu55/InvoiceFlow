@@ -14,18 +14,19 @@ import requests
 import streamlit as st
 
 API_URL = os.environ.get("AGENT_API_URL", "http://localhost:8000")
+HEADERS = {"X-API-Key": os.environ["API_KEY"]} if os.environ.get("API_KEY") else {}
 
 st.set_page_config(page_title="Invoice Intake Review", layout="wide")
 
 
 def api_get(path: str, **kwargs):
-    r = requests.get(f"{API_URL}{path}", timeout=30, **kwargs)
+    r = requests.get(f"{API_URL}{path}", timeout=30, headers=HEADERS, **kwargs)
     r.raise_for_status()
     return r.json()
 
 
 def api_post(path: str, json: dict | None = None, **kwargs):
-    r = requests.post(f"{API_URL}{path}", json=json, timeout=60, **kwargs)
+    r = requests.post(f"{API_URL}{path}", json=json, timeout=60, headers=HEADERS, **kwargs)
     r.raise_for_status()
     return r.json()
 
@@ -104,7 +105,7 @@ left, right = st.columns([1, 1.3])
 with left:
     st.subheader("Original document")
     try:
-        file_resp = requests.get(f"{API_URL}/invoices/{invoice_id}/file", timeout=30)
+        file_resp = requests.get(f"{API_URL}/invoices/{invoice_id}/file", timeout=30, headers=HEADERS)
         file_resp.raise_for_status()
         content_type = file_resp.headers.get("content-type", "")
         file_path = item.get("file_path") or ""

@@ -19,7 +19,10 @@ import os
 import re
 from functools import lru_cache
 
+from agent import resilience, security
+from agent.resilience import CallFailed
 from agent.state import DocumentClassification, ExtractedInvoice, LineItem
+from agent.telemetry import record_llm, span
 
 CLASSIFICATION_SYSTEM_PROMPT = """You are a document classification assistant for an accounts-payable
 intake pipeline. Given the raw OCR text of a scanned business document,
@@ -43,52 +46,86 @@ def _has_real_llm() -> bool:
 
 
 @lru_cache(maxsize=1)
-def _get_chat_model():
+def _chain() -> list[tuple[str, object]]:
+    """Chat models in preference order; a failing one falls through to the next."""
+    chain: list[tuple[str, object]] = []
     if os.environ.get("ANTHROPIC_API_KEY"):
         from langchain_anthropic import ChatAnthropic
 
-        return ChatAnthropic(
-            model=os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5"),
-            temperature=0,
-        )
+        name = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
+        chain.append((name, ChatAnthropic(model=name, temperature=0)))
     if os.environ.get("OPENAI_API_KEY"):
         from langchain_openai import ChatOpenAI
 
-        return ChatOpenAI(
-            model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
-            temperature=0,
-        )
-    raise RuntimeError("No LLM API key configured")
+        name = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+        chain.append((name, ChatOpenAI(model=name, temperature=0)))
+    return chain
+
+
+async def _invoke(model, schema, system: str, raw_text: str):
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    out = await model.with_structured_output(schema, include_raw=True).ainvoke(
+        [SystemMessage(content=f"{system}\n\n{security.UNTRUSTED_NOTICE}"), HumanMessage(content=security.wrap(raw_text))]
+    )
+    if out["parsed"] is None:
+        raise ValueError(f"output parse error: {out.get('parsing_error')}")
+    return out["parsed"], getattr(out["raw"], "usage_metadata", None)
+
+
+async def _structured(step: str, schema, system: str, raw_text: str):
+    """Try each model in the chain under timeout/retry/breaker; raise CallFailed only when all of them failed."""
+    last: CallFailed | None = None
+    for rank, (name, model) in enumerate(_chain()):
+        try:
+            with span(f"llm.{step}", fallback_rank=rank) as sp:
+                parsed, usage = await resilience.call(
+                    f"llm.{name}",
+                    lambda: _invoke(model, schema, system, raw_text),
+                    timeout=float(os.environ.get("LLM_TIMEOUT_SECONDS", 30)),
+                )
+                record_llm(sp, name, usage)
+                return parsed
+        except CallFailed as exc:
+            last = exc
+    raise last or CallFailed("llm", resilience.FailureKind.UNAVAILABLE, 0, "no model configured")
+
+
+def _heuristic(step: str, fn, raw_text: str):
+    with span(f"llm.{step}") as sp:
+        record_llm(sp, "heuristic", None)
+        return fn(raw_text)
 
 
 async def classify_document(raw_text: str) -> DocumentClassification:
     if not _has_real_llm():
-        return _mock_classify(raw_text)
-
-    from langchain_core.messages import HumanMessage, SystemMessage
-
-    model = _get_chat_model().with_structured_output(DocumentClassification)
-    return await model.ainvoke(
-        [
-            SystemMessage(content=CLASSIFICATION_SYSTEM_PROMPT),
-            HumanMessage(content=raw_text),
-        ]
-    )
+        return _heuristic("classify", _mock_classify, raw_text)
+    return await _structured("classify", DocumentClassification, CLASSIFICATION_SYSTEM_PROMPT, raw_text)
 
 
 async def extract_invoice(raw_text: str) -> ExtractedInvoice:
     if not _has_real_llm():
-        return _mock_extract(raw_text)
+        return _heuristic("extract", _mock_extract, raw_text)
+    return await _structured("extract", ExtractedInvoice, EXTRACTION_SYSTEM_PROMPT, raw_text)
 
-    from langchain_core.messages import HumanMessage, SystemMessage
 
-    model = _get_chat_model().with_structured_output(ExtractedInvoice)
-    return await model.ainvoke(
-        [
-            SystemMessage(content=EXTRACTION_SYSTEM_PROMPT),
-            HumanMessage(content=raw_text),
-        ]
-    )
+async def classify_safely(raw_text: str) -> tuple[DocumentClassification, str | None]:
+    """The classification, plus a reason when it had to fall back to the heuristic parser (forces human review)."""
+    try:
+        return await classify_document(raw_text), None
+    except CallFailed as exc:
+        result = _heuristic("classify", _mock_classify, raw_text)
+        result.confidence = min(result.confidence, 0.5)
+        return result, f"classification model unavailable ({exc.kind.value}); heuristic parser used"
+
+
+async def extract_safely(raw_text: str) -> tuple[ExtractedInvoice, str | None]:
+    try:
+        return await extract_invoice(raw_text), None
+    except CallFailed as exc:
+        result = _heuristic("extract", _mock_extract, raw_text)
+        result.extraction_confidence = min(result.extraction_confidence, 0.5)
+        return result, f"extraction model unavailable ({exc.kind.value}); heuristic parser used"
 
 
 # --------------------------------------------------------------------------

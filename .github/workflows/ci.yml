@@ -14,7 +14,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt pytest pytest-cov httpx
-      - run: pytest -q --cov=agent --cov=mcp_server --cov-fail-under=75
+      - run: pytest -q --cov=agent --cov=mcp_server --cov-fail-under=80
       - name: MCP server smoke test (stdio)
         run: python mcp_server/smoke_test.py
       - name: Docker images build

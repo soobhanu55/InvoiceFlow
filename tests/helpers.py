@@ -23,3 +23,45 @@ def invoice_text(po_number="PO-1001", tax_rate=10.0, qty_scale=1.0, price_scale=
         f"Subtotal: {subtotal:.2f}", f"Tax Rate: {tax_rate:g}%", f"Tax Amount: {tax:.2f}",
         f"Total: {subtotal + tax:.2f}",
     ]) + "\n"
+
+
+def run_pipeline(tmp_path, text, invoice_id="inv-1"):
+    """Run the real graph once (in-memory checkpointer); returns (final state, review payload or None)."""
+    import asyncio
+
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from agent.graph import build_graph, pending_review
+
+    path = tmp_path / f"{invoice_id}.txt"
+    path.write_text(text, encoding="utf-8")
+    graph = build_graph(MemorySaver())
+    cfg = {"configurable": {"thread_id": invoice_id}}
+
+    async def go():
+        result = await graph.ainvoke({"invoice_id": invoice_id, "file_path": str(path)}, config=cfg)
+        return result, await pending_review(graph, cfg)
+
+    return asyncio.run(go())
+
+
+class FakeModel:
+    """Stands in for a LangChain chat model: `outcomes` is a list of exceptions to raise or dicts to return, in order."""
+
+    def __init__(self, outcomes, usage=None):
+        self.outcomes, self.calls, self.usage = list(outcomes), 0, usage or {"input_tokens": 1000, "output_tokens": 200}
+
+    def with_structured_output(self, schema, include_raw=False):
+        model = self
+
+        class Runner:
+            async def ainvoke(self, messages):
+                model.calls += 1
+                outcome = model.outcomes.pop(0) if len(model.outcomes) > 1 else model.outcomes[0]
+                if isinstance(outcome, Exception):
+                    raise outcome
+                from types import SimpleNamespace
+
+                return {"raw": SimpleNamespace(usage_metadata=model.usage), "parsed": outcome(schema), "parsing_error": None}
+
+        return Runner()

@@ -7,6 +7,7 @@ endpoints for the human-in-the-loop queue.
 """
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import uuid
@@ -18,13 +19,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.types import Command
 from pydantic import BaseModel
 
-from agent import store
+from agent import resilience, security, store, telemetry
 from agent.graph import build_graph, pending_review
 from agent.mcp_client import get_mcp_client
 
@@ -47,7 +48,14 @@ async def lifespan(app: FastAPI):
     await mcp_client.close()
 
 
-app = FastAPI(title="Invoice Intake Agent", lifespan=lifespan)
+def require_key(request: Request, x_api_key: str | None = Header(default=None)) -> None:
+    """When API_KEY is set every route except the health check needs a matching X-API-Key header."""
+    key = os.environ.get("API_KEY")
+    if key and request.url.path != "/" and not hmac.compare_digest(x_api_key or "", key):
+        raise HTTPException(status_code=401, detail="Missing or invalid API key")
+
+
+app = FastAPI(title="Invoice Intake Agent", lifespan=lifespan, dependencies=[Depends(require_key)])
 
 
 class ResumeRequest(BaseModel):
@@ -186,3 +194,24 @@ async def list_output(status: Optional[str] = None) -> list[dict]:
 @app.get("/stats")
 async def stats() -> dict:
     return store.get_stats()
+
+
+@app.get("/traces/{invoice_id}")
+async def get_trace(invoice_id: str) -> dict:
+    """Span tree for one invoice: per-node and per-LLM/tool-call latency, tokens, cost and errors."""
+    trace = telemetry.get_trace(invoice_id)
+    if not trace["spans"]:
+        raise HTTPException(status_code=404, detail="No trace for this invoice (only the latest runs are kept in memory)")
+    return trace
+
+
+@app.get("/health/dependencies")
+async def dependency_health() -> dict:
+    """Retry and failure counters plus the state of every circuit breaker (closed / open / half_open)."""
+    return resilience.snapshot()
+
+
+@app.get("/audit/tools")
+async def tool_audit(limit: int = 100) -> list[dict]:
+    """The newest MCP tool calls (allowed, refused or failed)."""
+    return security.read_audit(min(limit, 1000))

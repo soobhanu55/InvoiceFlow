@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from agent import security
 from agent.state import InvoiceState
 
 
@@ -64,7 +65,13 @@ async def intake_node(state: InvoiceState) -> dict:
     else:
         raise ValueError(f"Unsupported invoice file type: {suffix}")
 
+    findings = security.scan(text)
+    text = security.clean(text)
+    if findings:
+        audit_log.append(f"intake: possible prompt injection in document text ({', '.join(findings)})")
+
     return {
+        "security_findings": findings,
         "raw_text": text,
         "ocr_lines": text.splitlines(),
         "ocr_confidence": ocr_confidence,

@@ -105,3 +105,7 @@ class InvoiceState(TypedDict, total=False):
     human_corrections: Optional[dict[str, Any]]
 
     audit_log: list[str]
+
+    # reasons the run fell back to a degraded path (forces human review) and prompt-injection patterns seen in the text
+    degraded: list[str]
+    security_findings: list[str]

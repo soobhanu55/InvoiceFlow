@@ -8,6 +8,7 @@ on record for that PO.
 from __future__ import annotations
 
 from agent.mcp_client import get_catalog_item, lookup_po, lookup_vendor
+from agent.resilience import CallFailed
 from agent.state import ExtractedInvoice, InvoiceState, MatchLineItemResult, MatchResult
 
 QTY_EPSILON = 0.001
@@ -15,7 +16,7 @@ PRICE_EPSILON = 0.01
 TOTAL_EPSILON = 0.02
 
 
-async def matching_node(state: InvoiceState) -> dict:
+async def _match(state: InvoiceState) -> dict:
     extracted_data = state.get("extracted")
     extracted = ExtractedInvoice(**extracted_data) if extracted_data else None
     audit_log = list(state.get("audit_log", []))
@@ -135,3 +136,14 @@ async def matching_node(state: InvoiceState) -> dict:
     )
 
     return {"match_result": match_result.model_dump(), "audit_log": audit_log}
+
+
+async def matching_node(state: InvoiceState) -> dict:
+    """Reconcile against the PO; if a catalog/ERP tool call fails for good, record it and route to a human."""
+    try:
+        return await _match(state)
+    except CallFailed as exc:
+        audit_log = list(state.get("audit_log", []))
+        audit_log.append(f"matching: {exc.name} failed ({exc.kind.value}); invoice not reconciled, routed to review")
+        result = MatchResult(po_found=False, vendor_verified=False, all_matched=False)
+        return {"match_result": result.model_dump(), "audit_log": audit_log}

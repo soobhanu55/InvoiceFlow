@@ -12,11 +12,16 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 from contextlib import AsyncExitStack
 from typing import Any
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+from agent import resilience, security
+from agent.resilience import PolicyViolation
+from agent.telemetry import span
 
 
 class MCPClient:
@@ -47,11 +52,12 @@ class MCPClient:
 
             session = await stack.enter_async_context(ClientSession(read, write))
             await session.initialize()
+            security.verify_server_tools({t.name for t in (await session.list_tools()).tools})
 
             self._stack = stack
             self._session = session
 
-    async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
+    async def _call_once(self, name: str, arguments: dict[str, Any]) -> Any:
         await self.connect()
         assert self._session is not None
         result = await self._session.call_tool(name, arguments)
@@ -62,6 +68,30 @@ class MCPClient:
             return json.loads(text)
         except (json.JSONDecodeError, AttributeError):
             return text
+
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
+        """Policy check -> timeout/retry/breaker -> audit log. Raises CallFailed (PolicyViolation if refused)."""
+        started = time.perf_counter()
+        with span(f"mcp.{name}") as sp:
+            reason = security.check_tool_call(name, arguments)
+            if reason:
+                sp.set_attribute("mcp.refused", reason)
+                security.audit(name, arguments, "refused", 0.0, reason)
+                raise PolicyViolation(name, reason)
+            try:
+                result = await resilience.call(
+                    f"mcp.{name}",
+                    lambda: self._call_once(name, arguments),
+                    timeout=float(os.environ.get("MCP_TIMEOUT_SECONDS", 10)),
+                )
+                if not isinstance(result, dict):  # tool results are objects; anything else is not trusted
+                    raise resilience.CallFailed(name, resilience.FailureKind.INVALID_OUTPUT, 1, "non-object result")
+            except resilience.CallFailed as exc:
+                sp.set_attribute("mcp.failure", exc.kind.value)
+                security.audit(name, arguments, f"failed:{exc.kind.value}", (time.perf_counter() - started) * 1000)
+                raise
+            security.audit(name, arguments, "ok", (time.perf_counter() - started) * 1000)
+            return result
 
     async def close(self) -> None:
         if self._stack is not None:
