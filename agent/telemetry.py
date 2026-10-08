@@ -70,13 +70,19 @@ class RingExporter(SpanExporter):
 
 
 ring = RingExporter()
-_provider = TracerProvider()
-_provider.add_span_processor(SimpleSpanProcessor(ring))
-if os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):  # pragma: no cover - needs a collector
-    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+def make_provider(otlp_endpoint: str | None = None) -> TracerProvider:
+    """The ring buffer always; plus an OTLP/HTTP exporter (<endpoint>/v1/traces) when an endpoint is given."""
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(ring))
+    if otlp_endpoint:
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-    _provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint.rstrip("/") + "/v1/traces")))
+    return provider
+
+
+_provider = make_provider(os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"))
 _tracer = _provider.get_tracer("invoiceflow")
 
 
