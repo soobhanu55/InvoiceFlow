@@ -52,3 +52,10 @@ def test_failed_calls_show_up_as_error_spans(tmp_path, monkeypatch):
     run_pipeline(tmp_path, text, "trace-4")
     t = telemetry.get_trace("trace-4")
     assert t["summary"]["errors"] >= 2 and any(s["error"] and s["name"].startswith("llm.") for s in t["spans"])
+
+
+def test_reading_a_trace_twice_gives_the_same_answer(tmp_path, monkeypatch):
+    for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    run_pipeline(tmp_path, invoice_text(), "trace-5")
+    assert telemetry.get_trace("trace-5") == telemetry.get_trace("trace-5")

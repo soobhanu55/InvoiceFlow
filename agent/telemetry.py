@@ -62,7 +62,7 @@ class RingExporter(SpanExporter):
 
     def spans(self, invoice_id: str) -> list[dict]:
         with self._lock:
-            return sorted(self._by_invoice.get(invoice_id, []), key=lambda s: s["start_ns"])
+            return sorted((dict(s) for s in self._by_invoice.get(invoice_id, [])), key=lambda s: s["start_ns"])
 
     def clear(self) -> None:
         with self._lock:
